@@ -1,0 +1,10 @@
+---
+commitizen:
+  annotated_tag: true
+  bump_message: "bump: $current_version -> $new_version"
+  major_version_zero: false
+  name: cz_conventional_commits
+  tag_format: v$version
+  update_changelog_on_bump: true
+  version: 0.0.0
+  version_scheme: semver
