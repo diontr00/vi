@@ -1,0 +1,20 @@
+# Use for depguard  config to provide guard to allow import package
+Main:
+  files:
+    - $all
+  listMode: Lax
+  deny:
+    - reflect: Reflect should be allow explicitly
+  allow:
+    - github.com/stretchr/testify
+    - "github.com/onsi/ginkgo/v2"
+    - "github.com/onsi/gomega"
+
+Test:
+  listMode: Strict
+  files:
+    - $test
+  allow:
+    - github.com/stretchr/testify
+    - "github.com/onsi/ginkgo/v2"
+    - "github.com/onsi/gomega"
