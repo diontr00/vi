@@ -1,9 +1,180 @@
+# Use for golangci-lint config to provide linting
 linters:
   enable-all: false
   disable-all: false
-  fast: false
+  fast: true
   enable:
-    - gocritic
-    - godot
-    - wsl
+    - goimports
+    - asciicheck
+    - bodyclose
+    - depguard
+    - errchkjson
+    - errname
+    - errorlint
+    - exhaustive
+    - exportloopref
+    - forcetypeassert
+    # - funlen
+    - ginkgolinter
+    - gocognit
+    - gofmt
+    - misspell
+    - whitespace
+    # - godot
+    - tagalign
     - gomnd
+    - gocritic
+    - godox
+    - gosec
+    - ireturn
+    - nilnil
+    - perfsprint
+    - testifylint
+    - zerologlint
+
+linters-settings:
+  tagalign:
+    align: true
+    sort: true
+    strict: true
+  goimports:
+    local-prefixes: github.com/diontr00/vi
+  misspell:
+    locale: US
+  whitespace:
+    multi-if: true
+    multi-func: true
+  godot:
+    period: true
+    capital: true
+    check-all: true
+    exclude:
+      - "^todo:"
+      - "^fixme:"
+      - "^ignore:"
+  gomnd:
+    checks:
+      - argument
+      - case
+      - condition
+      - operation
+      - return
+      - assign
+
+  godox:
+    keywords:
+      - NOTE # Personal note that should be removed
+      - FIXME # Should be fix before  merging
+      - OPTIMIZE # Should be optimize before merging
+      - TODO # Should be done before merging
+      - BUG # mark bug  that should be
+
+  gocognit:
+    min-complexity: 40
+
+  goconst:
+    match-constant: true
+    min-len: 5
+    min-occurrences: 2
+    ignore-tests: true
+    ignore-calls: true
+    numbers: false
+    min: 3
+    max: 3
+
+  gocritic:
+    enabled-checks:
+      # Diagnostics
+      - appendAssign
+      - argOrder
+      - badCall
+      - badCond
+      - badLock
+      - badRegexp
+      - regexpPattern
+      - regexpSimplify
+      - builtinShadowDecl
+      - builtinShadow
+      - caseOrder
+      - commentedOutCode
+      - deferInLoop
+      - deprecatedComment
+      - dupArg
+      - dupBranchBody
+      - dupCase
+      - dupSubExpr
+      - dynamicFmtString
+      - evalOrder
+      - exitAfterDefer
+      - externalErrorReassign
+      - flagDeref
+      - flagName
+      - mapKey
+      - nilValReturn
+      - offBy1
+      - returnAfterHttpError
+      - sloppyTypeAssert
+      - truncateCmp
+      - typeAssertChain
+      - uncheckedInlineErr
+      - unnecessaryDefer
+      - weakCond
+      #  Style
+      - assignOp
+      - captLocal
+      - commentFormatting
+      - deferUnlambda
+      - elseif
+      - emptyStringTest
+      - exposedSyncMutex
+      - httpNoBody
+      - ifElseChain
+      - importShadow
+      - newDeref
+      - paramTypeCombine
+      - regexpMust
+      - singleCaseSwitch
+      - sloppyLen
+      - typeDefFirst
+      - typeSwitchVar
+      - typeUnparen
+      - underef
+      - unslice
+      - valSwap
+      - wrapperFunc
+      #  performance
+      - appendCombine
+      - equalFold
+      - hugeParam
+      - indexAlloc
+      - preferDecodeRune # Use rune decode
+      - preferFprint
+      - preferStringWriter
+      - preferWriteByte
+      - rangeExprCopy # for large size
+      - rangeValCopy # for small size
+      - stringXbytes
+    settings:
+      ifElseChain:
+        minThreshold: 3
+    # disabled-checks:
+    # - codegenComment
+    # - defaultCaseOrder
+    # - switchTrue
+  gosec:
+    severity: low
+    confidence: low
+    config:
+      global:
+      nosec: true
+      "#nosec": "sec-ignore"
+
+  depguard:
+    rules:
+      Main:
+        files:
+          - $all
+        allow:
+          - $gostd
+          - "github.com/onsi/ginkgo/v2"
+          - "github.com/onsi/gomega"
