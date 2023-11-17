@@ -1,0 +1,50 @@
+name: CI
+on:
+  pull_request:
+    branches:
+      - "*"
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.21.3"
+
+      - name: Install ginkgo testing framework
+        run: go install github.com/onsi/ginkgo/v2/ginkgo@latest
+
+      - name: checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare dependencies
+        run: |
+          go mod download
+
+      - name: golangci-lint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.55.2
+          golangci-lint run --fix ./...
+
+      - name: Test
+        run: |
+          go run github.com/onsi/ginkgo/v2/ginkgo -r --randomize-all --keep-going --cover --output-dir report \
+          --coverprofile=cover.out --race --trace  --json-report=report.json \
+          && go tool cover -html=report/cover.out  -o report/cover.html
+
+      - name: CheckCover
+        run: |
+          total=`go tool cover -func=report/cover.out | grep total | grep -Eo '[0-9]+\.[0-9]+'`
+          if  (( $(echo "$total" <= "70" | bc -l))); then
+            echo "Code coverage Warning: $total% < 50%"
+            exit 1
+          fi
+          echo "Code coverage: $total%"
+      - uses: codecov/codecov-action@v3
+        with:
+          directory: report
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
