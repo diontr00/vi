@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os"
-	"strings"
+
+	"github.com/diontr00/vi/internal/color"
 )
 
 type method string
@@ -17,14 +17,18 @@ const (
 	MethodDelete method = method(http.MethodDelete)
 )
 
+type Config struct {
+	banner bool
+}
+
 type vi struct {
 	trees map[method]*tree
 }
 
 // Return new vi
-func New() *vi {
-	if boff := os.Getenv("BANNEROFF"); boff == "" {
-		fmt.Printf(banner, Version, website)
+func New(config *Config) *vi {
+	if config.banner {
+		fmt.Println(color.Green(banner, color.Blue(Version), color.Red(website)))
 	}
 
 	return &vi{
@@ -89,10 +93,8 @@ func (v *vi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if nodes == nil {
-		res := strings.Split(rqUrl, "/")
-		prefix := "/" + res[0]
 		// match against any static match
-		nodes := v.trees[method(r.Method)].find(prefix)
+		nodes := v.trees[method(r.Method)].find("/")
 
 		for _, node := range nodes {
 			handler := node.handler

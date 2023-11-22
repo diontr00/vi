@@ -2,6 +2,7 @@ package vi
 
 import (
 	"fmt"
+	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -18,12 +19,20 @@ func divergeAt(oldP, newP string) (level int) {
 		cmap[rs]++
 	}
 
-	for i, v := range newP {
+	for i, v := range oldP {
 		if cmap[v] == 1 {
-			// Found diverge
 			return i
 		}
+		delete(cmap, v)
 	}
+
+	for i, v := range newP {
+		if _, ok := cmap[v]; ok {
+			level = i
+			return
+		}
+	}
+
 	return -1
 }
 
@@ -54,14 +63,15 @@ var _ = Describe("tree: unix-test", Ordered, func() {
 
 	When("Adding node , it should be reuse , added value  and order correctly to the tree", func() {
 		When("Adding initial path", func() {
-			path1Len := len(path1)
+			path1Len := len(trimPrefix(path1))
+
 			mock := setupMock(handler, path1)
 
 			It(fmt.Sprintf("Should create %d nodes when adding path : %s", path1Len, path1), func() {
 
 				nTree.add(path1, mock.GetHandler())
 				currentNtreeSize := nTree.size
-				diffLevel := divergeAt(path1, string(root.key))
+				diffLevel := divergeAt(path1, root.key)
 				if diffLevel < 0 {
 					// no diverge , so len(path) of nodes need to be create
 					diffLevel = len(path1)
@@ -74,7 +84,7 @@ var _ = Describe("tree: unix-test", Ordered, func() {
 			It("Added correctly", func() {
 				node := root
 
-				for i, key := range path1 {
+				for i, key := range trimPrefix(path1) {
 					if !node.isLeaf {
 						By("Create correct amount of  node")
 						Expect(node.children).To(HaveLen(1), fmt.Sprintf("Node %v should have a single children with %v \n", string(node.key), key))
@@ -120,7 +130,7 @@ var _ = Describe("tree: unix-test", Ordered, func() {
 
 				diffLevel := divergeAt(path1, path2)
 
-				for i, key := range path2 {
+				for i, key := range trimPrefix(path2) {
 					if !node.isLeaf {
 						By("Reuse node")
 						if i == diffLevel {
@@ -172,3 +182,7 @@ var _ = Describe("tree: unix-test", Ordered, func() {
 	})
 
 })
+
+func trimPrefix(path string) string {
+	return strings.Trim(path, "/")
+}

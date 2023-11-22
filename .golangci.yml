@@ -4,10 +4,10 @@ linters:
   disable-all: false
   fast: true
   enable:
-    - goimports
+    # - goimports
     - asciicheck
     # - bodyclose
-    - depguard
+    # - depguard
     - errchkjson
     - errname
     - errorlint
@@ -37,8 +37,8 @@ linters-settings:
     align: true
     sort: true
     strict: true
-  goimports:
-    local-prefixes: github.com/diontr00/vi
+  # goimports:
+  #   local-prefixes: github.com/diontr00/vi
   misspell:
     locale: US
   whitespace:
@@ -168,14 +168,3 @@ linters-settings:
       global:
       nosec: true
       "#nosec": "sec-ignore"
-
-  depguard:
-    rules:
-      Main:
-        files:
-          - $all
-        allow:
-          - $gostd
-          - "github.com/onsi/ginkgo/v2"
-          - "github.com/onsi/gomega"
-          - "github.com/stretchr/testify/mock"

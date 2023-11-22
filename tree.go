@@ -2,10 +2,11 @@ package vi
 
 import (
 	"net/http"
+	"strings"
 )
 
 type (
-	nodeKey = rune
+	nodeKey = string
 
 	tree struct {
 		// tree root
@@ -40,7 +41,7 @@ func newNode(key nodeKey, depth int) *treenode {
 
 func newTree() *tree {
 	return &tree{
-		root: newNode(' ', 1),
+		root: newNode("/", 1),
 		size: 1,
 	}
 }
@@ -51,15 +52,22 @@ func newTree() *tree {
 func (tree *tree) add(path string, handle http.HandlerFunc) {
 	var treenode = tree.root
 
-	for _, char := range path {
-		child, ok := treenode.children[nodeKey(char)]
-		if !ok {
-			child = newNode(nodeKey(char), treenode.depth+1)
-			treenode.children[nodeKey(char)] = child
-			tree.size++
+	if path != treenode.key {
+		path = strings.TrimPrefix(path, "/")
+		keys := strings.Split(path, "")
+
+		for _, key := range keys {
+			child, ok := treenode.children[nodeKey(key)]
+			if !ok {
+				child = newNode(nodeKey(key), treenode.depth+1)
+				treenode.children[nodeKey(key)] = child
+				tree.size++
+			}
+
+			treenode = child
 		}
 
-		treenode = child
+		path = "/" + path
 	}
 
 	treenode.handler = handle
@@ -75,11 +83,24 @@ func (tree *tree) find(key string) (nodes []*treenode) {
 		node  = tree.root
 	)
 
+	// root
+	if key == node.path {
+		nodes = append(nodes, node)
+		return
+	}
+
+	key = strings.TrimPrefix(key, "/")
+
 	for _, char := range key {
 		child, ok := node.children[nodeKey(char)]
 		if !ok {
 			return
 		}
+		if key == child.path {
+			nodes = append(nodes, child)
+			return
+		}
+
 		node = child
 	}
 
