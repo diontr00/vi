@@ -76,16 +76,16 @@ func match(url, path string) (matched bool, results matchParams) {
 				pattern := string(pthB)
 				// :named.
 				patterns := strings.Split(pattern, ":")
-				nameLastId := len(patterns[1]) - 1
-				nameLastChar := []byte(patterns[1])[nameLastId]
+				param := patterns[1]
+				paramLastIdx := len(param) - 1
+				paramLastChar := []byte(param)[paramLastIdx]
 				// Whether the last char is alpha numeric , which signify regex modifier.
-				if isMeta(string(nameLastChar)) {
+				if isMeta(string(paramLastChar)) {
 					// [name , specialChar ].
-					s := strings.Split(patterns[1], string(nameLastChar))
-					matchName = append(matchName, patterns[1][0:nameLastId])
-					tmp += patternGen(s[0], true)
+					matchName = append(matchName, param[0:paramLastIdx])
+					tmp += patternGen(strings.TrimSuffix(param, string(paramLastChar)), true)
 					// Add modifier to regex string.
-					tmp += string(nameLastChar)
+					tmp += string(paramLastChar)
 					continue
 				}
 

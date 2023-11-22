@@ -3,7 +3,7 @@ module github.com/diontr00/vi
 go 1.21.4
 
 require (
-	github.com/diontr00/gocolor v0.1.0
+	github.com/mattn/go-isatty v0.0.20
 	github.com/onsi/ginkgo/v2 v2.13.1
 	github.com/onsi/gomega v1.30.0
 	github.com/stretchr/testify v1.6.1
@@ -15,7 +15,6 @@ require (
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect
-	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/stretchr/objx v0.1.0 // indirect
 	golang.org/x/net v0.17.0 // indirect

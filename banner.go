@@ -1,7 +1,7 @@
 package vi
 
 const (
-	Version = "beta"
+	Version = "under development"
 	website = "https://khanhanh.me"
 	banner  = `
       ___

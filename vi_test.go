@@ -69,7 +69,7 @@ func getRoute(router *vi, method method) func(path string, handler http.HandlerF
 
 // build check ,  register handler for each path with  given method and assert the handler has been call and return correct payload
 func checkSimpleResponse(url, path string, expectFail bool) {
-	router := New()
+	router := New(&Config{banner: false})
 	//  validate trees == nil  case
 	router.trees = nil
 
@@ -99,7 +99,7 @@ func checkSimpleResponse(url, path string, expectFail bool) {
 			expectBody = "/"
 		}
 
-		Expect(rec.Body.String()).To(Equal(expectBody), fmt.Sprintf("Expect receive %s as the body for path %s , with method %s", expectBody, path, method))
+		Expect(rec.Body.String()).To(Equal(expectBody), fmt.Sprintf("Expect receive %s as the body for path %s , with method %s but got %s", expectBody, path, method, rec.Body.String()))
 
 		mock.AssertCalled(GinkgoT(), "CallMock", path)
 	}
@@ -107,14 +107,14 @@ func checkSimpleResponse(url, path string, expectFail bool) {
 
 // check whether handler register for path  match url and handle correctly with param
 func checkResponseWithParam(url, path string, expectParam map[matchKey]string, expectMatch bool) {
-	router := New()
+	router := New(&Config{banner: false})
 
 	h := func(w http.ResponseWriter, r *http.Request) {
 		for k, v := range expectParam {
 			Expect(r.Context().Value(k)).To(Equal(v), fmt.Sprintf("param with key: %s and value: %s should be include in the context of request with path : %s", k, v, url))
 		}
 
-		fmt.Fprintf(w, "%s%v", r.URL.Path, expectParam)
+		fmt.Fprintf(w, "%s with param: %v", r.URL.Path, expectParam)
 	}
 
 	m := setupMock(h, path)
@@ -137,7 +137,7 @@ func checkResponseWithParam(url, path string, expectParam map[matchKey]string, e
 			return
 		}
 
-		expectBody := fmt.Sprintf("%s%v", url, expectParam)
+		expectBody := fmt.Sprintf("%s with param: %v", url, expectParam)
 		Expect(rec.Body.String()).To(Equal(expectBody), fmt.Sprintf("Expect receive %s as the body for path %s , with method %s", expectBody, path, method))
 
 		m.AssertCalled(GinkgoT(), "CallMock", path)
