@@ -168,3 +168,6 @@ linters-settings:
       global:
       nosec: true
       "#nosec": "sec-ignore"
+
+  exhaustive:
+    ignore-enum-types: "method"

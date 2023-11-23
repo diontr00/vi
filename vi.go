@@ -11,49 +11,69 @@ import (
 type method string
 
 const (
-	MethodGet    method = method(http.MethodGet)
-	MethodPost   method = method(http.MethodPost)
-	MethodPut    method = method(http.MethodPut)
-	MethodDelete method = method(http.MethodDelete)
+	MethodGet     method = method(http.MethodGet)
+	MethodPost    method = method(http.MethodPost)
+	MethodPut     method = method(http.MethodPut)
+	MethodDelete  method = method(http.MethodDelete)
+	MethodPatch   method = method(http.MethodPatch)
+	MethodConnect method = method(http.MethodConnect)
+	MethodHead    method = method(http.MethodHead)
+	MethodTrace   method = method(http.MethodTrace)
 )
 
 type Config struct {
 	banner bool
 }
 
+type middleware func(next http.HandlerFunc) http.HandlerFunc
+
 type vi struct {
+	prefixes []string
+	// routing tree
 	trees map[method]*tree
+	// map between prefix and middleware
+	middlewares map[string][]middleware
 }
 
 // Return new vi
 func New(config *Config) *vi {
-	if config.banner {
+	if config != nil && config.banner {
 		fmt.Println(color.Green(banner, color.Blue(Version), color.Red(website)))
 	}
 
+	prefix := "/"
+	middlewares := make(map[string][]middleware)
+	middlewares[prefix] = []middleware{}
 	return &vi{
-		trees: make(map[method]*tree),
+		prefixes:    []string{prefix},
+		middlewares: middlewares,
+		trees:       make(map[method]*tree),
 	}
 }
 
 // HTTP get routing along "pattern"
 func (v *vi) GET(path string, handler http.HandlerFunc) {
-	v.Add(http.MethodGet, path, handler)
+	v.Add(MethodGet, path, handler)
 }
 
 // HTTP post routing along "pattern"
 func (v *vi) POST(path string, handler http.HandlerFunc) {
-	v.Add(http.MethodPost, path, handler)
+	v.Add(MethodPost, path, handler)
 }
 
 // HTTP put routing along "pattern"
 func (v *vi) PUT(path string, handler http.HandlerFunc) {
-	v.Add(http.MethodPut, path, handler)
+	v.Add(MethodPut, path, handler)
 }
 
 // HTTP delete routing along "pattern"
 func (v *vi) DELETE(path string, handler http.HandlerFunc) {
-	v.Add(http.MethodDelete, path, handler)
+	v.Add(MethodDelete, path, handler)
+}
+
+// HTTP path routin  along "pattern"
+func (v *vi) PATCH(path string, handler http.HandlerFunc) {
+	v.Add(MethodPatch, path, handler)
 }
 
 // register new  HTTP verb routing along pattern
@@ -75,18 +95,54 @@ func (v *vi) Add(m method, path string, handler http.HandlerFunc) {
 		v.trees[method(m)] = tree
 	}
 
-	tree.add(path, handler)
+	tree.add(path, handler, v.prefixes)
+}
+
+// use to group route under prefix
+func (v *vi) Group(prefix string) *vi {
+	if string(prefix[0]) != "/" {
+		prefix = "/" + prefix
+	}
+	prefixes := v.prefixes
+	if _, ok := v.middlewares[prefix]; !ok {
+		v.middlewares[prefix] = make([]middleware, 0)
+		prefixes = append(prefixes, prefix)
+	}
+
+	return &vi{
+		prefixes:    prefixes,
+		trees:       v.trees,
+		middlewares: v.middlewares,
+	}
+}
+
+// use to register middlewares
+func (v *vi) Use(middlewares ...middleware) {
+	prefix := v.prefixes[len(v.prefixes)-1]
+
+	if len(middlewares) > 0 {
+		v.middlewares[prefix] = append(v.middlewares[prefix], middlewares...)
+	}
+}
+
+func (v *vi) chain(w http.ResponseWriter, r *http.Request, handler http.HandlerFunc, prefixes []string) {
+	for _, p := range prefixes {
+		for _, m := range v.middlewares[p] {
+			handler = m(handler)
+		}
+	}
+
+	handler(w, r)
 }
 
 func (v *vi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rqUrl := r.URL.Path
 	nodes := v.trees[method(r.Method)].find(rqUrl)
-
 	for i := range nodes {
 		handler := nodes[i].handler
 		if handler != nil {
 			if nodes[i].path == rqUrl {
-				handler(w, r)
+				v.chain(w, r, handler, nodes[i].prefixes)
 				return
 			}
 		}
@@ -96,17 +152,17 @@ func (v *vi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// match against any static match
 		nodes := v.trees[method(r.Method)].find("/")
 
-		for _, node := range nodes {
-			handler := node.handler
+		for i := range nodes {
+			handler := nodes[i].handler
 
-			if handler != nil && node.path != rqUrl {
-				isMatch, matchParams := match(rqUrl, node.path)
+			if handler != nil && nodes[i].path != rqUrl {
+				isMatch, matchParams := match(rqUrl, nodes[i].path)
 				if isMatch {
 					for k, v := range matchParams {
 						ctx := context.WithValue(r.Context(), k, v)
 						r = r.WithContext(ctx)
 					}
-					handler(w, r)
+					v.chain(w, r, handler, nodes[i].prefixes)
 					return
 				}
 			}
