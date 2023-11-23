@@ -1,3 +1,9 @@
+## v0.3.0 (2023-11-23)
+
+### Feat
+
+- **router**: ✨ grouping and middleware
+
 ## v0.2.0 (2023-11-18)
 
 ### Feat
