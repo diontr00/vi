@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-var avaibleRoute = [...]method{MethodGet, MethodPost, MethodPut, MethodDelete}
+var avaibleRoute = [...]method{MethodGet, MethodPost, MethodPut, MethodDelete, MethodPatch}
 
 func TestVi(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -20,7 +20,19 @@ func TestVi(t *testing.T) {
 
 type handlerMock struct {
 	mock.Mock
-	handler http.HandlerFunc
+	handler    http.HandlerFunc
+	middleware map[string]middleware
+}
+
+func (m *handlerMock) WrapMW(prefix string, mw middleware) {
+	m.middleware[prefix] = func(next http.HandlerFunc) http.HandlerFunc {
+		m.CallMock(prefix)
+		return next
+	}
+}
+
+func (m *handlerMock) GetMw(prefix string) middleware {
+	return m.middleware[prefix]
 }
 
 // Return wrapped handlerFunc that call mock and handler function
@@ -51,4 +63,10 @@ func setupMock(h http.HandlerFunc, path string) *handlerMock {
 
 	m.Wrap(path, h)
 	return m
+}
+
+func newMock() *handlerMock {
+	return &handlerMock{
+		middleware: make(map[string]middleware),
+	}
 }

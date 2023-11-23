@@ -8,6 +8,7 @@ import (
 type (
 	nodeKey = string
 
+	// represent the tree of nodes for particular route method
 	tree struct {
 		// tree root
 		root *treenode
@@ -15,6 +16,8 @@ type (
 		size int
 	}
 
+	// tree node represent the structure that hold particular identify by particular node key
+	// only leaf node  will hold the expected value in this case handler and middlewares
 	treenode struct {
 		key nodeKey
 		// the route
@@ -23,10 +26,12 @@ type (
 		handler http.HandlerFunc
 		// its depth in the routing tree
 		depth int
-		// its children treenode
+		// its children treenodes
 		children map[nodeKey]*treenode
 		// whether treenode is leaf treenode
 		isLeaf bool
+		// middlewares register on the node
+		prefixes []string
 	}
 )
 
@@ -49,7 +54,7 @@ func newTree() *tree {
 // add new route to the routing tree
 // create a new treenode for each char in the key
 // and the final treenode represent the endpoint of the route
-func (tree *tree) add(path string, handle http.HandlerFunc) {
+func (tree *tree) add(path string, handle http.HandlerFunc, prefixes []string) {
 	var treenode = tree.root
 
 	if path != treenode.key {
@@ -73,6 +78,7 @@ func (tree *tree) add(path string, handle http.HandlerFunc) {
 	treenode.handler = handle
 	treenode.isLeaf = true
 	treenode.path = path
+	treenode.prefixes = prefixes
 }
 
 // find all nodes in the routing tree that match given key
@@ -89,9 +95,9 @@ func (tree *tree) find(key string) (nodes []*treenode) {
 		return
 	}
 
-	key = strings.TrimPrefix(key, "/")
+	keys := strings.TrimPrefix(key, "/")
 
-	for _, char := range key {
+	for _, char := range keys {
 		child, ok := node.children[nodeKey(char)]
 		if !ok {
 			return

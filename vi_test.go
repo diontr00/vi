@@ -48,6 +48,78 @@ var _ = DescribeTable("Test with params", func(url string, path string, expectPa
 	Entry("", "/user", "user", nil, true),
 )
 
+var _ = Describe("Test with middlewares", func() {
+	var mock *handlerMock
+
+	BeforeEach(func() {
+		mock = newMock()
+		mock.WrapMW("/", func(next http.HandlerFunc) http.HandlerFunc {
+			return next
+		})
+	})
+
+	It("Should call the register middleware", func() {
+
+		v := New(&Config{banner: false})
+		v.Use(mock.GetMw("/"))
+		mock.On("CallMock", "/").Return()
+		v.GET("/", func(w http.ResponseWriter, r *http.Request) {
+			return
+		})
+
+		req := httptest.NewRequest(string(MethodGet), "/", http.NoBody)
+		rec := httptest.NewRecorder()
+		v.ServeHTTP(rec, req)
+		mock.AssertCalled(GinkgoT(), "CallMock", "/")
+	})
+
+	It("Should call nested register middleware", func() {
+
+		mock.WrapMW("/hello", func(next http.HandlerFunc) http.HandlerFunc {
+			return next
+		})
+
+		mock.WrapMW("/hello/world", func(next http.HandlerFunc) http.HandlerFunc {
+			return next
+		})
+
+		v := New(&Config{banner: false})
+
+		v.Use(mock.GetMw("/"))
+
+		sv := v.Group("/hello")
+		ssv := sv.Group("world")
+		sv.Use(mock.GetMw("/hello"))
+		ssv.Use(mock.GetMw("/hello/world"))
+
+		mock.On("CallMock", "/").Return()
+		mock.On("CallMock", "/hello").Return()
+		mock.On("CallMock", "/hello/world").Return()
+
+		sv.GET("/hello/world", func(w http.ResponseWriter, r *http.Request) {
+			return
+		})
+
+		ssv.GET("/hello/world/2", func(w http.ResponseWriter, r *http.Request) {
+			return
+		})
+
+		req := httptest.NewRequest(string(MethodGet), "/hello/world/2", http.NoBody)
+		rec := httptest.NewRecorder()
+		v.ServeHTTP(rec, req)
+		mock.AssertCalled(GinkgoT(), "CallMock", "/")
+		mock.AssertCalled(GinkgoT(), "CallMock", "/hello")
+		mock.AssertCalled(GinkgoT(), "CallMock", "/hello/world")
+
+	})
+
+	It("", func() {
+		_ = New(&Config{banner: true})
+
+	})
+
+})
+
 // return router helper method
 func getRoute(router *vi, method method) func(path string, handler http.HandlerFunc) {
 	var route func(path string, handler http.HandlerFunc)
@@ -60,6 +132,8 @@ func getRoute(router *vi, method method) func(path string, handler http.HandlerF
 		route = router.PUT
 	case MethodDelete:
 		route = router.DELETE
+	case MethodPatch:
+		route = router.PATCH
 	default:
 		Fail(fmt.Sprintf("Unknown method : %s", method))
 	}

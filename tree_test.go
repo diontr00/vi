@@ -69,7 +69,7 @@ var _ = Describe("tree: unix-test", Ordered, func() {
 
 			It(fmt.Sprintf("Should create %d nodes when adding path : %s", path1Len, path1), func() {
 
-				nTree.add(path1, mock.GetHandler())
+				nTree.add(path1, mock.GetHandler(), []string{"/", "/path1"})
 				currentNtreeSize := nTree.size
 				diffLevel := divergeAt(path1, root.key)
 				if diffLevel < 0 {
@@ -113,7 +113,7 @@ var _ = Describe("tree: unix-test", Ordered, func() {
 			mock := setupMock(handler, path2)
 
 			It("Should create the different (between len(path)  and the different of two paths) nodes only", func() {
-				nTree.add(path2, mock.GetHandler())
+				nTree.add(path2, mock.GetHandler(), []string{"/", "/path2"})
 				currentSize := nTree.size
 				diffLevel := divergeAt(path1, path2)
 				if diffLevel < 0 {
@@ -167,7 +167,7 @@ var _ = Describe("tree: unix-test", Ordered, func() {
 			By("Finding nodes for the first path")
 			nodes := nTree.find(path1)
 			Expect(nodes).ToNot(BeNil(), fmt.Sprintf("nodes for %s should not be nil", path1))
-			Expect(nodes).To(HaveLen(2), "expect path hello to match both handler for hello and hello2")
+			Expect(nodes).To(HaveLen(1), "return matchexact path hello")
 			Expect(string(nodes[0].key)).To(Equal("o"), "last element of path1 is o")
 			By("Finding nodes for the second path")
 			nodes = nTree.find(path2)
@@ -177,6 +177,7 @@ var _ = Describe("tree: unix-test", Ordered, func() {
 			By("Finding nodes for invalid path")
 			nodes = nTree.find("invalid")
 			Expect(nodes).To(BeEmpty(), "should not return any nodes for invalid path")
+
 		})
 
 	})
