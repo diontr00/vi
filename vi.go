@@ -9,7 +9,9 @@ import (
 )
 
 type method string
+type timeformat string
 
+// HTTP Method
 const (
 	MethodGet     method = method(http.MethodGet)
 	MethodPost    method = method(http.MethodPost)
@@ -22,7 +24,10 @@ const (
 )
 
 type Config struct {
-	banner bool
+	// When set to false , this will turn off the banner
+	Banner bool
+	// Set the custom not found error handler , if not set the default not fault will be use
+	NotFoundHandler http.HandlerFunc
 }
 
 type middleware func(next http.HandlerFunc) http.HandlerFunc
@@ -33,22 +38,29 @@ type vi struct {
 	trees map[method]*tree
 	// map between prefix and middleware
 	middlewares map[string][]middleware
+	// not found error handler
+	notfoundhandler http.HandlerFunc
 }
 
 // Return new vi
 func New(config *Config) *vi {
-	if config != nil && config.banner {
+	v := new(vi)
+	v.prefixes = []string{"/"}
+	v.middlewares = make(map[string][]middleware)
+	v.middlewares["/"] = []middleware{}
+	v.trees = make(map[method]*tree)
+
+	if config != nil && config.Banner {
 		fmt.Println(color.Green(banner, color.Blue(Version), color.Red(website)))
 	}
-
-	prefix := "/"
-	middlewares := make(map[string][]middleware)
-	middlewares[prefix] = []middleware{}
-	return &vi{
-		prefixes:    []string{prefix},
-		middlewares: middlewares,
-		trees:       make(map[method]*tree),
+	if config.NotFoundHandler != nil {
+		v.notfoundhandler = config.NotFoundHandler
+	} else {
+		v.notfoundhandler = func(w http.ResponseWriter, r *http.Request) {
+			http.NotFound(w, r)
+		}
 	}
+	return v
 }
 
 // HTTP get routing along "pattern"
@@ -110,9 +122,10 @@ func (v *vi) Group(prefix string) *vi {
 	}
 
 	return &vi{
-		prefixes:    prefixes,
-		trees:       v.trees,
-		middlewares: v.middlewares,
+		prefixes:        prefixes,
+		trees:           v.trees,
+		middlewares:     v.middlewares,
+		notfoundhandler: v.notfoundhandler,
 	}
 }
 
@@ -169,5 +182,5 @@ func (v *vi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	http.NotFound(w, r)
+	v.notfoundhandler(w, r)
 }

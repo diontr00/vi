@@ -7,6 +7,67 @@
 
 "This project draws inspiration from **gorilla/mux**, and I appreciate the ease of working with the library. However, its performance falls short of my expectations. After conducting research, my goal is to develop a high-performance HTTP router that not only outperforms but also retains the convenient API of mux, enhanced with additional support for regex. I welcome any feedback as this will be my first open source projects."
 
+# Installation
+
+```go
+go get -u github.com/diontr00/vi
+```
+
+## Usage
+
+```go
+package main
+
+import (
+    "github.com/diontr00/vi"
+)
+
+func main(){
+    customNotFoundHandler  := func(w http.ResponseWriter , r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(customNotFoundMsg))
+    }
+
+    mux := vi.New(&vi.Config{Banner : false ,  NotFoundHandler: customNotFoundHandler})
+    mux.RegisterHelper("ip" , `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+    mux.Get("/location/:ip", func(w http.ResponseWriter , r *http.Request){
+            ip := r.Context().Value("ip").(string)
+            msg := fmt.Sprintf("You have search ip addres %s \n", ip)
+            w.Write([]byte(msg))
+    })
+
+    srv :=  &http.Server{
+        Addre: ":8080" ,
+        Handler: vi,
+    }
+
+    done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+	log.Print("Server Started")
+
+	<-done
+	log.Print("Server Stopped")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer func() {
+		// extra handling here
+		cancel()
+	}()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatalf("Server Shutdown Failed:%+v", err)
+	}
+	log.Print("Server Exited Properly")
+}
+
+```
+
 # Matching Rule
 
 - **Named parameter**
