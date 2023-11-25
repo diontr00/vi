@@ -66,3 +66,13 @@ var _ = DescribeTable("Test escapeMeta to escape all the meta character in the s
 	Entry("", "", ""),
 	Entry("", "1@2#3$4", "1\\@2\\#3\\$4"),
 )
+
+var _ = Describe("Test pattern register", func() {
+	It("Should matched correctly and return associate params", func() {
+		RegisterHelper("ip", `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+		matched, param := match("/location/192.168.0.1", "/location/:ip")
+		Expect(matched).To(BeTrue())
+		Expect(param).To(HaveKeyWithValue(matchKey("ip"), "192.168.0.1"))
+	})
+
+})

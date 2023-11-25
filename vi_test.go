@@ -60,7 +60,7 @@ var _ = Describe("Test with middlewares", func() {
 
 	It("Should call the register middleware", func() {
 
-		v := New(&Config{banner: false})
+		v := New(&Config{Banner: false})
 		v.Use(mock.GetMw("/"))
 		mock.On("CallMock", "/").Return()
 		v.GET("/", func(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +83,11 @@ var _ = Describe("Test with middlewares", func() {
 			return next
 		})
 
-		v := New(&Config{banner: false})
+		customNotFoundMsg := "not found handler called"
+		v := New(&Config{Banner: false, NotFoundHandler: func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(customNotFoundMsg))
+		}})
 
 		v.Use(mock.GetMw("/"))
 
@@ -111,10 +115,18 @@ var _ = Describe("Test with middlewares", func() {
 		mock.AssertCalled(GinkgoT(), "CallMock", "/hello")
 		mock.AssertCalled(GinkgoT(), "CallMock", "/hello/world")
 
+		req = httptest.NewRequest(string(MethodGet), "/notfound", http.NoBody)
+		rec = httptest.NewRecorder()
+
+		sv.ServeHTTP(rec, req)
+
+		Expect(rec.Result().StatusCode).To(Equal(404))
+		Expect(rec.Body.String()).To(Equal(customNotFoundMsg))
+
 	})
 
 	It("", func() {
-		_ = New(&Config{banner: true})
+		_ = New(&Config{Banner: true})
 
 	})
 
@@ -143,7 +155,7 @@ func getRoute(router *vi, method method) func(path string, handler http.HandlerF
 
 // build check ,  register handler for each path with  given method and assert the handler has been call and return correct payload
 func checkSimpleResponse(url, path string, expectFail bool) {
-	router := New(&Config{banner: false})
+	router := New(&Config{Banner: false})
 	//  validate trees == nil  case
 	router.trees = nil
 
@@ -181,7 +193,7 @@ func checkSimpleResponse(url, path string, expectFail bool) {
 
 // check whether handler register for path  match url and handle correctly with param
 func checkResponseWithParam(url, path string, expectParam map[matchKey]string, expectMatch bool) {
-	router := New(&Config{banner: false})
+	router := New(&Config{Banner: false})
 
 	h := func(w http.ResponseWriter, r *http.Request) {
 		for k, v := range expectParam {

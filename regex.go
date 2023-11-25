@@ -5,12 +5,18 @@ import (
 	"strings"
 )
 
-const (
-	// Default pattern should be treat as words.
-	defaultPattern helper = `[\w]+`
-	// Helper regex pattern  for id.
-	idPattern helper = `[\d]+`
-)
+// helper pattern map to support param matching
+var helperPattern = map[string]string{
+	"id":      `[\d]+`,
+	"default": `[\w]+`,
+}
+
+// Use to register helper pattern to be use in param matching
+// example : ip ,`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`
+// then you can use something like  v.Get("/location/:ip", ...)
+func RegisterHelper(pattern, regex string) {
+	helperPattern[pattern] = regex
+}
 
 type (
 	matchKey string
@@ -19,11 +25,13 @@ type (
 	matchParams = map[matchKey]string
 )
 
-// Match path pattern again the url
-// Return whether match  , and the map of param and its value.
+// Match route path again the url
+// Should be use after perform static full path match
+// Return whether match , and the map of param and its value.
 func match(url, path string) (matched bool, results matchParams) {
 	path = strings.Trim(path, " ")
 	paths := strings.Split(path, "/")
+	// empty path
 	if len(paths) == 1 {
 		return false, nil
 	}
@@ -76,6 +84,7 @@ func match(url, path string) (matched bool, results matchParams) {
 				pattern := string(pthB)
 				// :named.
 				patterns := strings.Split(pattern, ":")
+				// named
 				param := patterns[1]
 				paramLastIdx := len(param) - 1
 				paramLastChar := []byte(param)[paramLastIdx]
@@ -105,12 +114,11 @@ func match(url, path string) (matched bool, results matchParams) {
 // If group is true , the  pattern  is  prefix with / before capture , when we want to apply modifier to the pattern  like optional.
 func patternGen(s string, group bool) string {
 	var pattern helper
-	switch s {
-	case "id":
-		pattern = idPattern
-	default:
 
-		pattern = defaultPattern
+	if p, ok := helperPattern[s]; ok {
+		pattern = helper(p)
+	} else {
+		pattern = helper(helperPattern["default"])
 	}
 
 	if group {
@@ -125,6 +133,7 @@ func regexHelper(url, pattern string, matchedName []string) (matched bool, resul
 	result = map[matchKey]string{}
 	regex := regexp.MustCompile(pattern)
 	submatch := regex.FindSubmatch([]byte(url))
+
 	if submatch != nil {
 		submatch = submatch[1:]
 		for i, match := range submatch {
