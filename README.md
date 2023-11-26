@@ -13,7 +13,35 @@
 go get -u github.com/diontr00/vi
 ```
 
-## Usage
+## TestRegex
+
+If you want to make sure whether the regex matcher work as you expected , you can use **TestMatcher** function in the init function
+
+```go
+func init() {
+
+    RegisterHelper("ip", `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+	RegisterHelper("phone", `([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+`)
+
+    // Expect match
+    errs := TestMatcher(true, "/user/{id:[0-9]+}/:ip/:phone?", map[vi.TestUrl]vi.TestResult{
+        "/user/101/192.168.0.1/999-9999999":        { "id" : "101" , "ip": "192.168.0.1", "phone": "999-9999999"},
+        "/user/102/192.168.0.2/+48(12)504-203-260": { "id" : "102" , "ip": "192.168.0.2", "phone": "+48(12)504-203-260"},
+        "/user/103/192.168.0.3":                    { "id" : "103" , "ip": "192.168.0.3"},
+        "/user/104/192.168.0.4/555-5555-555" :      { "id" : "104" , "ip": "192.168.0.4" ,"phone": "555-5555-555"}
+	})
+
+    for i := range errs {
+        fmt.Println(errs[i])
+    }
+
+    // Expect not match
+    errs := TestMatcher(false , ....)
+
+}
+```
+
+## Simple Usage
 
 ```go
 package main

@@ -1,6 +1,8 @@
 package vi
 
 import (
+	"fmt"
+	. "github.com/diontr00/vi/internal/color"
 	"regexp"
 	"strings"
 )
@@ -11,7 +13,7 @@ var helperPattern = map[string]string{
 	"default": `[\w]+`,
 }
 
-// Use to register helper pattern to be use in param matching
+// Use to register global helper pattern to be use in param matching
 // example : ip ,`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`
 // then you can use something like  v.Get("/location/:ip", ...)
 func RegisterHelper(pattern, regex string) {
@@ -24,6 +26,39 @@ type (
 	// Match param store the params matched.
 	matchParams = map[matchKey]string
 )
+
+// Expect test result , for each param expect value in TestMatcher
+type ExpectMatch map[string]string
+
+// Represent the url to be test again pattern in TestMatcher
+type TestUrl string
+
+// Can be use to validate whether the regex pattern match correctly
+func TestMatcher(expect bool, pattern string, tests ...map[TestUrl]ExpectMatch) []error {
+	var errs []error
+	for i := range tests {
+		for url, result := range tests[i] {
+			matched, params := match(string(url), pattern)
+			var matchResult = false
+			// loop match param key and value
+			for k, v := range result {
+				if pv, ok := params[matchKey(k)]; ok || v == pv {
+					matchResult = true
+					break
+				}
+			}
+
+			if matched != expect || matchResult != expect {
+				msg := Red("Got %t and %v when match %s and %s \n", matched, params, url, pattern)
+				errs = append(errs, fmt.Errorf("%s", msg))
+			}
+		}
+	}
+	if len(errs) == 0 {
+		return nil
+	}
+	return errs
+}
 
 // Match route path again the url
 // Should be use after perform static full path match
@@ -137,9 +172,13 @@ func regexHelper(url, pattern string, matchedName []string) (matched bool, resul
 	if submatch != nil {
 		submatch = submatch[1:]
 		for i, match := range submatch {
-			if len(submatch[i]) == 0 {
+			if i > len(matchedName)-1 {
+				break
+			}
+			if len(match) == 0 {
 				continue
 			}
+
 			key := matchedName[i]
 			if string(match[0]) == "/" {
 				match = match[1:]

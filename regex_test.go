@@ -76,3 +76,38 @@ var _ = Describe("Test pattern register", func() {
 	})
 
 })
+
+var _ = Describe("TestMatcher", func() {
+	It("Test expect match", func() {
+		RegisterHelper("ip", `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+		RegisterHelper("phone", `([+]?[\s0-9]+)?(\d{3}|[(]?[0-9]+[)])?([-]?[\s]?[0-9])+`)
+		errs := TestMatcher(true, "/location/:ip/:phone?", map[TestUrl]ExpectMatch{
+			"/location/192.168.0.1/999-9999999":        {"ip": "192.168.0.1", "phone": "999-9999999"},
+			"/location/192.168.0.2/+48(12)504-203-260": {"ip": "192.168.0.2", "phone": "+48(12)504-203-260"},
+			"/location/192.168.0.3":                    {"ip": "192.168.0.3"},
+		})
+
+		Expect(errs).To(BeNil())
+	})
+
+	It("Test expect not match", func() {
+		RegisterHelper("ip", `/caller/((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])`)
+		errs := TestMatcher(false, "/location/:ip", map[TestUrl]ExpectMatch{
+			"/location/192.168.0.256": {"ip": "192.168.0.1"},
+		})
+
+		for _, err := range errs {
+			fmt.Println(err)
+		}
+		Expect(errs).To(BeNil())
+
+		RegisterHelper("ip", `/caller/((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])`)
+		errs = TestMatcher(true, "/location/:ip", map[TestUrl]ExpectMatch{
+			"/location/192.168.0.256": {"ip": "192.168.0.1"},
+		})
+
+		Expect(errs).ToNot(BeNil())
+
+	})
+
+})
