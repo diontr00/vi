@@ -1,3 +1,9 @@
+## v0.3.2 (2023-11-26)
+
+### Fix
+
+- **regex**: 🐛 fix when group use in regex pattern , submatch lead to invalid memory address access
+
 ## v0.3.1 (2023-11-25)
 
 ### Refactor
