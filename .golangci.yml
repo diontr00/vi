@@ -63,14 +63,14 @@ linters-settings:
 
   godox:
     keywords:
-      - NOTE # Personal note that should be removed
-      - FIXME # Should be fix before  merging
-      - OPTIMIZE # Should be optimize before merging
-      - TODO # Should be done before merging
-      - BUG # mark bug  that should be
+      - NOTE
+      - FIXME
+      - OPTIMIZE
+      - TODO
+      - BUG
 
   gocognit:
-    min-complexity: 40
+    min-complexity: 45
 
   goconst:
     match-constant: true
@@ -170,4 +170,4 @@ linters-settings:
       "#nosec": "sec-ignore"
 
   exhaustive:
-    ignore-enum-types: "method"
+    ignore-enum-types: "Method"

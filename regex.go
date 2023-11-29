@@ -1,10 +1,14 @@
 package vi
 
 import (
+	"bytes"
 	"fmt"
-	. "github.com/diontr00/vi/internal/color"
 	"regexp"
 	"strings"
+	"sync"
+	"unicode"
+
+	. "github.com/diontr00/vi/internal/color"
 )
 
 // helper pattern map to support param matching
@@ -12,6 +16,9 @@ var helperPattern = map[string]string{
 	"id":      `[\d]+`,
 	"default": `[\w]+`,
 }
+
+var regexCache = map[string]*regexp.Regexp{}
+var regexRW sync.RWMutex
 
 // Use to register global helper pattern to be use in param matching
 // example : ip ,`\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`
@@ -65,6 +72,10 @@ func TestMatcher(expect bool, pattern string, tests ...map[TestUrl]ExpectMatch) 
 // Return whether match , and the map of param and its value.
 func match(url, path string) (matched bool, results matchParams) {
 	path = strings.Trim(path, " ")
+	if path == "" {
+		return false, nil
+	}
+
 	paths := strings.Split(path, "/")
 	// empty path
 	if len(paths) == 1 {
@@ -74,7 +85,7 @@ func match(url, path string) (matched bool, results matchParams) {
 		// Names of matched param in pattern.
 		matchName = []string{}
 		// Regex pattern holder to match again url.
-		tmp = ""
+		tmp strings.Builder
 	)
 
 	for i, pth := range paths {
@@ -83,10 +94,12 @@ func match(url, path string) (matched bool, results matchParams) {
 			pthB := []byte(pth)
 			lastIdx := len(pthB) - 1
 
+			firstCh := string(pthB[0])
+			lastCh := string(pthB[lastIdx])
+
 			// Check first path
 			// 0 should be empty. "for /".
 			if i == 1 {
-				firstCh := string(pthB[0])
 				if firstCh == "*" {
 					// Only wildcard is treated as regex when represent as standalone value in path.
 					if len(pth) == 1 {
@@ -99,23 +112,36 @@ func match(url, path string) (matched bool, results matchParams) {
 				// Other meta char should be treated as normal word by escape them.
 				if isMeta(firstCh) {
 					if len(pth) == 1 {
-						tmp = tmp + "/" + escapeNonAlphaNum(pth)
+						tmp.WriteString("/")
+						tmp.WriteString(escapeNonAlphaNum(pth))
 						continue
 					}
 				}
 			}
 
-			if string(pthB[0]) == "{" && string(pthB[lastIdx]) == "}" {
-				// {named:regex}
-				t := string(pthB[1:lastIdx])
+			if firstCh == "{" && lastCh == "}" {
 				// named:regex
-				ptrns := strings.Split(t, ":")
+				ptrns := bytes.Split(pthB[1:lastIdx], []byte(":"))
+				param := string(ptrns[0])
 
-				matchName = append(matchName, ptrns[0])
-				regex := ptrns[1]
+				matchName = append(matchName, param)
+				var regex string
+				l := len(ptrns)
+				switch {
+				case l == 2 || l > 2:
+					regex = string(ptrns[1])
+				default:
+					if param == "" {
+						return false, nil
+					}
+					regex = param
+				}
 
-				tmp += "/" + "(" + string(regex) + ")"
-			} else if string(pthB[0]) == ":" {
+				tmp.WriteString("/")
+				tmp.WriteString("(")
+				tmp.WriteString(string(regex))
+				tmp.WriteString(")")
+			} else if firstCh == ":" {
 				pattern := string(pthB)
 				// :named.
 				patterns := strings.Split(pattern, ":")
@@ -127,47 +153,65 @@ func match(url, path string) (matched bool, results matchParams) {
 				if isMeta(string(paramLastChar)) {
 					// [name , specialChar ].
 					matchName = append(matchName, param[0:paramLastIdx])
-					tmp += patternGen(strings.TrimSuffix(param, string(paramLastChar)), true)
+					tmp.WriteString(patternGen(strings.TrimSuffix(param, string(paramLastChar)), true))
 					// Add modifier to regex string.
-					tmp += string(paramLastChar)
+					tmp.WriteString(string(paramLastChar))
 					continue
 				}
 
 				matchName = append(matchName, patterns[1])
-				tmp += patternGen(patterns[1], false)
+				tmp.WriteString(patternGen(patterns[1], false))
 			} else {
 				// Handle non define pattern case , escape all.
-				tmp = tmp + "/" + escapeNonAlphaNum(pth)
+				tmp.WriteString("/" + escapeNonAlphaNum(pth))
 			}
 		}
 	}
 
-	return regexHelper(url, tmp, matchName)
+	return regexHelper(url, tmp.String(), matchName)
 }
 
 // Generate regrex pattern for s
 // If group is true , the  pattern  is  prefix with / before capture , when we want to apply modifier to the pattern  like optional.
 func patternGen(s string, group bool) string {
-	var pattern helper
+	var pattern strings.Builder
+	pattern.WriteString("(")
+	if group {
+		pattern.WriteString("/")
+	}
 
 	if p, ok := helperPattern[s]; ok {
-		pattern = helper(p)
+		pattern.WriteString(p)
 	} else {
-		pattern = helper(helperPattern["default"])
+		pattern.WriteString(helperPattern["default"])
 	}
 
+	pattern.WriteString(")")
 	if group {
-		pattern = "/" + pattern
-		return "(" + string(pattern) + ")"
+		return pattern.String()
 	}
-	return "/" + "(" + string(pattern) + ")"
+	return "/" + pattern.String()
 }
 
 // Regex matching of url  again generated pattern.
 func regexHelper(url, pattern string, matchedName []string) (matched bool, result map[matchKey]string) {
-	result = map[matchKey]string{}
-	regex := regexp.MustCompile(pattern)
-	submatch := regex.FindSubmatch([]byte(url))
+	result = make(map[matchKey]string, len(matchedName))
+
+	regexRW.RLock()
+	defer regexRW.RUnlock()
+	var r *regexp.Regexp
+	if rc, ok := regexCache[pattern]; !ok {
+		r = regexp.MustCompile(pattern)
+		go func(regex *regexp.Regexp) {
+			defer regexRW.Unlock()
+			regexRW.Lock()
+			regexCache[pattern] = regex
+		}(r)
+	} else {
+		r = rc
+	}
+
+	submatch := r.FindSubmatch([]byte(url))
 
 	if submatch != nil {
 		submatch = submatch[1:]
@@ -206,7 +250,13 @@ func isMeta(s string) bool {
 
 // Escape all non alpha numeric in the string.
 func escapeNonAlphaNum(s string) string {
-	re := regexp.MustCompile("[^a-zA-Z0-9]+")
-	escaped := re.ReplaceAllString(s, "\\$0")
-	return escaped
+	var buffer bytes.Buffer
+	for _, char := range s {
+		if unicode.IsLetter(char) || unicode.IsDigit(char) {
+			buffer.WriteRune(char)
+		} else {
+			buffer.WriteString(fmt.Sprintf("\\%c", char))
+		}
+	}
+	return buffer.String()
 }

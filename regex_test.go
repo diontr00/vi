@@ -40,7 +40,9 @@ var _ = DescribeTable("Regex: Unit-test", func(url string, path string, result b
 	Entry("Should notMatch invalid path", "/anh", "/{name:{z%$!}}", false, nil),
 	Entry("Should notMatch invalid path2", "/anh", "/:name!", false, nil),
 	Entry("Should return not matched if receive invalid path", "/anh", "!", false, nil),
-	Entry("should not matched if empty", "/anh", "", false, nil),
+	Entry("Should not matched if empty", "/anh", "", false, nil),
+	Entry("Should not panic when provide regex with no pattern", "/anh", "/{anh}", true, map[matchKey]string{"anh": "anh"}),
+	Entry("Should not turn empty regex to empty string, since it can match something unexpected", "/anh", "/{}", false, nil),
 )
 
 var _ = DescribeTable("Check isMeta return true only if string contain meta character", func(pattern string, metaExist bool) {
