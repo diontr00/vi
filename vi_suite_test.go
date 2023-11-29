@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-var avaibleRoute = [...]method{MethodGet, MethodPost, MethodPut, MethodDelete, MethodPatch}
+var avaibleRoute = [...]string{"GET", "POST", "PUT", "DELETE", "PATCH"}
 
 func TestVi(t *testing.T) {
 	RegisterFailHandler(Fail)

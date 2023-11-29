@@ -8,20 +8,11 @@ import (
 	"github.com/diontr00/vi/internal/color"
 )
 
-type method string
-type timeformat string
+// type of the context key
+type ctxKey struct{}
 
-// HTTP Method
-const (
-	MethodGet     method = method(http.MethodGet)
-	MethodPost    method = method(http.MethodPost)
-	MethodPut     method = method(http.MethodPut)
-	MethodDelete  method = method(http.MethodDelete)
-	MethodPatch   method = method(http.MethodPatch)
-	MethodConnect method = method(http.MethodConnect)
-	MethodHead    method = method(http.MethodHead)
-	MethodTrace   method = method(http.MethodTrace)
-)
+// use to set the key of a context
+var contextKey = ctxKey{}
 
 type Config struct {
 	// When set to false , this will turn off the banner
@@ -33,9 +24,10 @@ type Config struct {
 type middleware func(next http.HandlerFunc) http.HandlerFunc
 
 type vi struct {
+	// hold prefix that relevant for particular vi instance
 	prefixes []string
 	// routing tree
-	trees map[method]*tree
+	trees map[string]*tree
 	// map between prefix and middleware
 	middlewares map[string][]middleware
 	// not found error handler
@@ -46,9 +38,8 @@ type vi struct {
 func New(config *Config) *vi {
 	v := new(vi)
 	v.prefixes = []string{"/"}
-	v.middlewares = make(map[string][]middleware)
-	v.middlewares["/"] = []middleware{}
-	v.trees = make(map[method]*tree)
+	v.middlewares = map[string][]middleware{"/": {}}
+	v.trees = make(map[string]*tree)
 
 	if config != nil && config.Banner {
 		fmt.Println(color.Green(banner, color.Blue(Version), color.Red(website)))
@@ -65,46 +56,53 @@ func New(config *Config) *vi {
 
 // HTTP get routing along "pattern"
 func (v *vi) GET(path string, handler http.HandlerFunc) {
-	v.Add(MethodGet, path, handler)
+	v.Add("GET", path, handler)
 }
 
 // HTTP post routing along "pattern"
 func (v *vi) POST(path string, handler http.HandlerFunc) {
-	v.Add(MethodPost, path, handler)
+	v.Add("POST", path, handler)
 }
 
 // HTTP put routing along "pattern"
 func (v *vi) PUT(path string, handler http.HandlerFunc) {
-	v.Add(MethodPut, path, handler)
+	v.Add("PUT", path, handler)
 }
 
 // HTTP delete routing along "pattern"
 func (v *vi) DELETE(path string, handler http.HandlerFunc) {
-	v.Add(MethodDelete, path, handler)
+	v.Add("DELETE", path, handler)
 }
 
 // HTTP path routin  along "pattern"
 func (v *vi) PATCH(path string, handler http.HandlerFunc) {
-	v.Add(MethodPatch, path, handler)
+	v.Add("PATCH", path, handler)
 }
 
 // register new  HTTP verb routing along pattern
-func (v *vi) Add(m method, path string, handler http.HandlerFunc) {
-	if path == "" {
-		path = "/"
+func (v *vi) Add(method, path string, handler http.HandlerFunc) {
+	if method == "" {
+		panic(color.Red("method must not be empty"))
+	}
+
+	if len(path) < 1 {
+		panic(color.Red("path must not be empty"))
 	}
 	if string(path[0]) != "/" {
 		path = "/" + path
 	}
-
-	if v.trees == nil {
-		v.trees = make(map[method]*tree)
+	if handler == nil {
+		panic(color.Red("handler must not be nil"))
 	}
 
-	tree := v.trees[method(m)]
+	if v.trees == nil {
+		v.trees = make(map[string]*tree)
+	}
+
+	tree := v.trees[method]
 	if tree == nil {
 		tree = newTree()
-		v.trees[method(m)] = tree
+		v.trees[method] = tree
 	}
 
 	tree.add(path, handler, v.prefixes)
@@ -116,6 +114,7 @@ func (v *vi) Group(prefix string) *vi {
 		prefix = "/" + prefix
 	}
 	prefixes := v.prefixes
+
 	if _, ok := v.middlewares[prefix]; !ok {
 		v.middlewares[prefix] = make([]middleware, 0)
 		prefixes = append(prefixes, prefix)
@@ -138,19 +137,37 @@ func (v *vi) Use(middlewares ...middleware) {
 	}
 }
 
+// chain all middlewares associate with prefixes
 func (v *vi) chain(w http.ResponseWriter, r *http.Request, handler http.HandlerFunc, prefixes []string) {
+	var allMiddleware []middleware
 	for _, p := range prefixes {
-		for _, m := range v.middlewares[p] {
-			handler = m(handler)
-		}
+		allMiddleware = append(allMiddleware, v.middlewares[p]...)
+	}
+
+	for i := len(allMiddleware) - 1; i >= 0; i-- {
+		handler = allMiddleware[i](handler)
 	}
 
 	handler(w, r)
 }
 
+// Get the matched  param that store inside request context
+func GetParam(r *http.Request, key string) (paramValue string) {
+	values, ok := r.Context().Value(contextKey).(matchParams)
+	if ok {
+		paramValue, ok = values[matchKey(key)]
+	}
+
+	if !ok {
+		paramValue = ""
+	}
+
+	return paramValue
+}
+
 func (v *vi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rqUrl := r.URL.Path
-	nodes := v.trees[method(r.Method)].find(rqUrl)
+	nodes := v.trees[r.Method].find(rqUrl)
 	for i := range nodes {
 		handler := nodes[i].handler
 		if handler != nil {
@@ -162,19 +179,17 @@ func (v *vi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if nodes == nil {
-		// match against any static match
-		nodes := v.trees[method(r.Method)].find("/")
+		// match against any regex match
+		nodes := v.trees[r.Method].find("/")
 
 		for i := range nodes {
 			handler := nodes[i].handler
 
-			if handler != nil && nodes[i].path != rqUrl {
+			if handler != nil {
 				isMatch, matchParams := match(rqUrl, nodes[i].path)
 				if isMatch {
-					for k, v := range matchParams {
-						ctx := context.WithValue(r.Context(), k, v)
-						r = r.WithContext(ctx)
-					}
+					ctx := context.WithValue(r.Context(), contextKey, matchParams)
+					r = r.WithContext(ctx)
 					v.chain(w, r, handler, nodes[i].prefixes)
 					return
 				}

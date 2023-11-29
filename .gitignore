@@ -1,3 +1,5 @@
 .DS_Store
 Makefile
 report
+splotscript/
+vi_bench_test.go
