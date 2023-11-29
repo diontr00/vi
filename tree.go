@@ -59,9 +59,8 @@ func (tree *tree) add(path string, handle http.HandlerFunc, prefixes []string) {
 
 	if path != treenode.key {
 		path = strings.TrimPrefix(path, "/")
-		keys := strings.Split(path, "")
 
-		for _, key := range keys {
+		for _, key := range path {
 			child, ok := treenode.children[nodeKey(key)]
 			if !ok {
 				child = newNode(nodeKey(key), treenode.depth+1)
@@ -85,14 +84,13 @@ func (tree *tree) add(path string, handle http.HandlerFunc, prefixes []string) {
 // After identify  the first matching , it continue to find  all leaf nodes with  bread first exploration
 func (tree *tree) find(key string) (nodes []*treenode) {
 	var (
-		queue []*treenode
+		stack []*treenode
 		node  = tree.root
 	)
 
 	// root
 	if key == node.path {
-		nodes = append(nodes, node)
-		return
+		return []*treenode{node}
 	}
 
 	keys := strings.TrimPrefix(key, "/")
@@ -103,27 +101,26 @@ func (tree *tree) find(key string) (nodes []*treenode) {
 			return
 		}
 		if key == child.path {
-			nodes = append(nodes, child)
-			return
+			return []*treenode{child}
 		}
 
 		node = child
 	}
 
 	// successfully match the entire key
-	queue = append(queue, node)
-	for len(queue) > 0 {
-		var tmpQueue []*treenode
-		for _, node := range queue {
-			if node.isLeaf {
-				nodes = append(nodes, node)
-			}
+	stack = append(stack, node)
 
-			for _, vnode := range node.children {
-				tmpQueue = append(tmpQueue, vnode)
-			}
+	for len(stack) > 0 {
+		node, stack = stack[0], stack[1:]
+
+		if node.isLeaf {
+			nodes = append(nodes, node)
 		}
-		queue = tmpQueue
+
+		for _, vnode := range node.children {
+			stack = append(stack, vnode)
+		}
 	}
-	return
+
+	return nodes
 }

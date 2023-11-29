@@ -14,7 +14,6 @@ var _ = DescribeTable("Test with no params", func(url, path string, expectFail b
 },
 	Entry("url match path", "/hello", "/hello", false),
 	Entry("url not match path", "/world", "/hello", true),
-	Entry("path empty should be replace with /", "/", "", false),
 )
 
 var _ = DescribeTable("Test with params", func(url string, path string, expectParams map[matchKey]string, expectMatch bool) {
@@ -44,7 +43,6 @@ var _ = DescribeTable("Test with params", func(url string, path string, expectPa
 
 	Entry("", "/anh", `/?`, nil, false),
 	Entry("", "/user/anh", `/us/{name:\w+}`, nil, false),
-	Entry("", "/", "", nil, true),
 	Entry("", "/user", "user", nil, true),
 )
 
@@ -67,7 +65,7 @@ var _ = Describe("Test with middlewares", func() {
 			return
 		})
 
-		req := httptest.NewRequest(string(MethodGet), "/", http.NoBody)
+		req := httptest.NewRequest("GET", "/", http.NoBody)
 		rec := httptest.NewRecorder()
 		v.ServeHTTP(rec, req)
 		mock.AssertCalled(GinkgoT(), "CallMock", "/")
@@ -108,14 +106,14 @@ var _ = Describe("Test with middlewares", func() {
 			return
 		})
 
-		req := httptest.NewRequest(string(MethodGet), "/hello/world/2", http.NoBody)
+		req := httptest.NewRequest("GET", "/hello/world/2", http.NoBody)
 		rec := httptest.NewRecorder()
 		v.ServeHTTP(rec, req)
 		mock.AssertCalled(GinkgoT(), "CallMock", "/")
 		mock.AssertCalled(GinkgoT(), "CallMock", "/hello")
 		mock.AssertCalled(GinkgoT(), "CallMock", "/hello/world")
 
-		req = httptest.NewRequest(string(MethodGet), "/notfound", http.NoBody)
+		req = httptest.NewRequest("GET", "/notfound", http.NoBody)
 		rec = httptest.NewRecorder()
 
 		sv.ServeHTTP(rec, req)
@@ -125,26 +123,35 @@ var _ = Describe("Test with middlewares", func() {
 
 	})
 
-	It("", func() {
+	It("Test Coverage", func() {
 		_ = New(&Config{Banner: true})
+		r := httptest.NewRequest("GET", "/", http.NoBody)
+		s := GetParam(r, "not-exit")
+		Expect(s).To(BeZero())
+	})
+	It("Panic Case", func() {
+		r := New(&Config{Banner: false})
+		Ω(func() { r.Add("", "/", func(w http.ResponseWriter, r *http.Request) {}) }).Should(Panic())
+		Ω(func() { r.Add("GET", "", func(w http.ResponseWriter, r *http.Request) {}) }).Should(Panic())
 
+		Ω(func() { r.Add("GET", "/", nil) }).Should(Panic())
 	})
 
 })
 
 // return router helper method
-func getRoute(router *vi, method method) func(path string, handler http.HandlerFunc) {
+func getRoute(router *vi, method string) func(path string, handler http.HandlerFunc) {
 	var route func(path string, handler http.HandlerFunc)
 	switch method {
-	case MethodGet:
+	case "GET":
 		route = router.GET
-	case MethodPost:
+	case "POST":
 		route = router.POST
-	case MethodPut:
+	case "PUT":
 		route = router.PUT
-	case MethodDelete:
+	case "DELETE":
 		route = router.DELETE
-	case MethodPatch:
+	case "PATCH":
 		route = router.PATCH
 	default:
 		Fail(fmt.Sprintf("Unknown method : %s", method))
@@ -172,7 +179,7 @@ func checkSimpleResponse(url, path string, expectFail bool) {
 	}
 
 	for _, method := range avaibleRoute {
-		req := httptest.NewRequest(string(method), url, http.NoBody)
+		req := httptest.NewRequest(method, url, http.NoBody)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)
 		if expectFail {
@@ -197,7 +204,7 @@ func checkResponseWithParam(url, path string, expectParam map[matchKey]string, e
 
 	h := func(w http.ResponseWriter, r *http.Request) {
 		for k, v := range expectParam {
-			Expect(r.Context().Value(k)).To(Equal(v), fmt.Sprintf("param with key: %s and value: %s should be include in the context of request with path : %s", k, v, url))
+			Expect(GetParam(r, string(k))).To(Equal(v), fmt.Sprintf("param with key: %s and value: %s should be include in the context of request with path : %s", k, v, url))
 		}
 
 		fmt.Fprintf(w, "%s with param: %v", r.URL.Path, expectParam)

@@ -3,6 +3,8 @@ module github.com/diontr00/vi
 go 1.21.4
 
 require (
+	github.com/gorilla/mux v1.8.1
+	github.com/julienschmidt/httprouter v1.3.0
 	github.com/mattn/go-isatty v0.0.20
 	github.com/onsi/ginkgo/v2 v2.13.1
 	github.com/onsi/gomega v1.30.0
