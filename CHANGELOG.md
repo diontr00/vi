@@ -1,3 +1,13 @@
+## v0.4.0 (2023-12-16)
+
+### Feat
+
+- ✨ Adding static file server functionality
+
+### Fix
+
+- 🐛 Fix bug associate with Static method
+
 ## v0.3.2 (2023-11-26)
 
 ### Fix
