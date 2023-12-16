@@ -66,9 +66,9 @@ func main(){
     }
 
     mux := vi.New(&vi.Config{Banner : false ,  NotFoundHandler: customNotFoundHandler})
-    mux.RegisterHelper("ip" , `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+    vi.RegisterHelper("ip" , `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
     mux.Get("/location/:ip", func(w http.ResponseWriter , r *http.Request){
-            ip := r.Context().Value("ip").(string)
+            ip := vi.GetParam("ip")
             msg := fmt.Sprintf("You have search ip addres %s \n", ip)
             w.Write([]byte(msg))
     })

@@ -1,11 +1,18 @@
 package vi
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"log"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/diontr00/vi/internal/color"
+	"github.com/diontr00/vi/internal/utils"
 )
 
 // type of the context key
@@ -19,6 +26,30 @@ type Config struct {
 	Banner bool
 	// Set the custom not found error handler , if not set the default not fault will be use
 	NotFoundHandler http.HandlerFunc
+}
+
+// Static defines configuration options when defining static route
+type StaticConfig struct {
+	// Root is a filesystem  that provides access to a
+	// collection of files and directories , use http.Dir("folder name") or embed FS  with http.FS()
+	// Required
+	Root http.FileSystem
+	// Defines prefix that will be add to be when reading a file from FileSystem
+	// Use only when using go embed FS for Root
+	// Optional  default to ""
+	Prefix string
+	// Name of the index file for serving
+	// Optional default to index.html
+	Index string
+	// The value for the cache-control HTTP-Header when response , its define in term of second , default value to 0
+	// Optional default to 0
+	MaxAge int
+	//  Next defines a function  that allow to skip a scenario when it return true
+	// Optional default to nil
+	Next func(w http.ResponseWriter, r *http.Request) bool
+	// File to return if path is not found. Useful for SPA's
+	// Optional default to 404 not found
+	NotFoundFile string
 }
 
 type middleware func(next http.HandlerFunc) http.HandlerFunc
@@ -108,6 +139,120 @@ func (v *vi) Add(method, path string, handler http.HandlerFunc) {
 	tree.add(path, handler, v.prefixes)
 }
 
+// Static will create a file server serving the static file
+// if path present the path pattern
+func (v *vi) Static(path string, config ...StaticConfig) {
+	var cfg = StaticConfig{
+		Index:        "/index.html",
+		MaxAge:       0,
+		Next:         nil,
+		NotFoundFile: "",
+		Root:         nil,
+		Prefix:       "",
+	}
+
+	if len(config) > 0 {
+		cfg = config[0]
+		if config[0].Index == "" {
+			cfg.Index = "index.html"
+		}
+
+		if !strings.HasPrefix(cfg.Index, "/") {
+			cfg.Index = "/" + cfg.Index
+		}
+		if !strings.HasPrefix(cfg.NotFoundFile, "/") {
+			cfg.NotFoundFile = "/" + cfg.NotFoundFile
+		}
+	}
+
+	if cfg.Root == nil {
+		panic("Http file server root cannot be nil")
+	}
+
+	if cfg.Prefix != "" && !strings.HasPrefix(cfg.Prefix, "/") {
+		cfg.Prefix = "/" + cfg.Prefix
+	}
+	cacheControl := "public, max-age=" + strconv.Itoa(cfg.MaxAge)
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if cfg.Next != nil && cfg.Next(w, r) {
+			return
+		}
+		if r.Method != http.MethodGet {
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte("Invalid method"))
+			return
+		}
+		var searchp string = r.URL.Path
+		if cfg.Prefix != "" {
+			searchp += cfg.Prefix
+		}
+		if len(searchp) > 1 {
+			searchp = strings.TrimSuffix(searchp, "/")
+		}
+
+		file, err := cfg.Root.Open(searchp)
+		defer file.Close()
+		if err != nil && errors.Is(err, fs.ErrNotExist) {
+			if cfg.NotFoundFile == "" {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("404 Not Found"))
+				return
+			}
+
+			nffile, err := cfg.Root.Open(cfg.NotFoundFile)
+			defer nffile.Close()
+			if err != nil {
+				w.WriteHeader(http.StatusNotFound)
+				w.Write([]byte("404 Not Found"))
+				log.Printf("[Warning] , not found file couldn't be open : %v \n", err)
+				return
+			}
+			file = nffile
+		}
+		stat, err := file.Stat()
+
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Resource Couldn't be process"))
+			log.Printf("Couldn't open static file %s : %v", searchp, err)
+		}
+
+		// Serve index if path is directory
+		if stat.IsDir() {
+			index, err := cfg.Root.Open(cfg.Index)
+			defer index.Close()
+			if err != nil {
+				log.Panicf("Indix file couldn't be open : %v", err)
+			}
+
+			indStat, err := index.Stat()
+			if err != nil {
+				log.Panicf("Indix file couldn't be open : %v", err)
+			}
+			file = index
+			stat = indStat
+		}
+
+		mimeType := utils.GetFileExtension(stat.Name())
+		w.Header().Set("Content-Type", utils.GetMIME(mimeType))
+		if r.Method == http.MethodGet {
+			if cfg.MaxAge > 0 {
+				w.Header().Set("cache-control", cacheControl)
+				bufio.NewReader(file).WriteTo(w)
+				if err != nil {
+					log.Printf("Couldn't serving static file : %v", err)
+					w.WriteHeader(http.StatusInternalServerError)
+					w.Write([]byte("internal server error"))
+					return
+				}
+			}
+		}
+	}
+
+	v.Add(http.MethodGet, path, handler)
+}
+
 // use to group route under prefix
 func (v *vi) Group(prefix string) *vi {
 	if string(prefix[0]) != "/" {
@@ -130,6 +275,7 @@ func (v *vi) Group(prefix string) *vi {
 
 // use to register middlewares
 func (v *vi) Use(middlewares ...middleware) {
+	// get the last prefix added
 	prefix := v.prefixes[len(v.prefixes)-1]
 
 	if len(middlewares) > 0 {
