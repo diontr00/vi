@@ -66,9 +66,9 @@ func main(){
     }
 
     mux := vi.New(&vi.Config{Banner : false ,  NotFoundHandler: customNotFoundHandler})
-    mux.RegisterHelper("ip" , `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
+    vi.RegisterHelper("ip" , `\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}`)
     mux.Get("/location/:ip", func(w http.ResponseWriter , r *http.Request){
-            ip := r.Context().Value("ip").(string)
+            ip := vi.GetParam("ip")
             msg := fmt.Sprintf("You have search ip addres %s \n", ip)
             w.Write([]byte(msg))
     })
@@ -103,7 +103,37 @@ func main(){
  log.Print("Server Exited Properly")
 }
 
+```
 
+## Serving Static Files
+
+This receipt will serve any "userimage".png file under userfile static folder.
+Note that prefix is use to append to asset path, so userimage.png eventually
+become /static/userfile/userimage.png
+
+Other properties:
+
+- **Root:** Can be either http.Dir or embed with go embed fs
+- **MaxAge:** Can be set in term of second to control the cache header
+- **Next:** Skip function , will skip when query param ignore is true in this scenario
+- **NotFoundFile:** if not found , it will be serve
+
+```go
+func main() {
+    vi :=  vi.New()
+    vi.Static("/{userimage:[0-9a-zA-Z_.]+}.png" , &StaticConfig{
+        Root : http.Dir("static"),
+        Prefix: "userfile",
+        Index : "index.html",
+        MaxAge: 2,
+        Next : func(w http.ResponseWriter , r *http.Request) bool {
+            return r.URL.Query().Get("ignore") == "true"
+        },
+        NotFoundFile : "error/notfound.html"
+    } )
+
+    http.ListenAndServe(":8080", vi)
+}
 
 
 ```
