@@ -103,7 +103,37 @@ func main(){
  log.Print("Server Exited Properly")
 }
 
+```
 
+## Serving Static Files
+
+This receipt will serve any "userimage".png file under userfile static folder.
+Note that prefix is use to append to asset path, so userimage.png eventually
+become /static/userfile/userimage.png
+
+Other properties:
+
+- **Root:** Can be either http.Dir or embed with go embed fs
+- **MaxAge:** Can be set in term of second to control the cache header
+- **Next:** Skip function , will skip when query param ignore is true in this scenario
+- **NotFoundFile:** if not found , it will be serve
+
+```go
+func main() {
+    vi :=  vi.New()
+    vi.Static("/{userimage:[0-9a-zA-Z_.]+}.png" , &StaticConfig{
+        Root : http.Dir("static"),
+        Prefix: "userfile",
+        Index : "index.html",
+        MaxAge: 2,
+        Next : func(w http.ResponseWriter , r *http.Request) bool {
+            return r.URL.Query().Get("ignore") == "true"
+        },
+        NotFoundFile : "error/notfound.html"
+    } )
+
+    http.ListenAndServe(":8080", vi)
+}
 
 
 ```

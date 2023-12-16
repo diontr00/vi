@@ -115,14 +115,16 @@ var mimeExtensions = map[string]string{
 	"avi":     "video/x-msvideo",
 }
 
-func GetFileExtension(p string) string {
-	n := strings.LastIndexByte(p, '.')
+// return file extension of particular file path
+func GetFileExtension(fp string) string {
+	n := strings.LastIndexByte(fp, '.')
 	if n < 0 {
 		return ""
 	}
-	return p[n:]
+	return fp[n:]
 }
 
+// Get mime type from file extension string
 func GetMIME(extension string) string {
 	if extension == "" {
 		return ""

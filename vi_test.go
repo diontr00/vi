@@ -1,9 +1,11 @@
 package vi
 
 import (
-	"fmt"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strconv"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -139,100 +141,157 @@ var _ = Describe("Test with middlewares", func() {
 
 })
 
-// return router helper method
-func getRoute(router *vi, method string) func(path string, handler http.HandlerFunc) {
-	var route func(path string, handler http.HandlerFunc)
-	switch method {
-	case "GET":
-		route = router.GET
-	case "POST":
-		route = router.POST
-	case "PUT":
-		route = router.PUT
-	case "DELETE":
-		route = router.DELETE
-	case "PATCH":
-		route = router.PATCH
-	default:
-		Fail(fmt.Sprintf("Unknown method : %s", method))
-	}
+var _ = Describe("Serving Static with simple file content and header", func() {
+	maxAge := 2
+	v := New(&Config{Banner: false})
 
-	return route
-}
+	v.Static("/", &StaticConfig{Root: http.Dir("./.github/testdata/fs"), MaxAge: maxAge, NotFoundFile: "error/error.html"})
 
-// build check ,  register handler for each path with  given method and assert the handler has been call and return correct payload
-func checkSimpleResponse(url, path string, expectFail bool) {
-	router := New(&Config{Banner: false})
-	//  validate trees == nil  case
-	router.trees = nil
+	cacheControl := "public, max-age=" + strconv.Itoa(maxAge)
 
-	h := func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, r.URL.Path)
-	}
+	DescribeTable("", func(url string, expectStatusCode int, contentType string) {
 
-	mock := setupMock(h, path)
-	handler := mock.GetHandler()
-
-	for _, method := range avaibleRoute {
-		route := getRoute(router, method)
-		route(path, handler)
-	}
-
-	for _, method := range avaibleRoute {
-		req := httptest.NewRequest(method, url, http.NoBody)
+		req := httptest.NewRequest("GET", url, http.NoBody)
 		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-		if expectFail {
-			Expect(rec.Result().StatusCode).To(Equal(404), "should return http error not found for url :%s", path)
+		v.ServeHTTP(rec, req)
+
+		Expect(rec.Result().StatusCode).To(Equal(expectStatusCode))
+		Expect(rec.Header().Get("Content-Type")).To(Equal(contentType), "expect return correct Content-Type header")
+		Expect(rec.Header().Get("Cache-Control")).To(Equal(cacheControl), "expect return correct Cache-Control header")
+
+		var testFilePath string
+		if rec.Result().StatusCode == 404 {
+			testFilePath = "./.github/testdata/fs/error/error.html"
+		} else {
+			testFilePath = "./.github/testdata/fs" + url
+		}
+
+		file, err := os.Open(testFilePath)
+		Expect(err).ToNot(HaveOccurred(), "[Setup] test file content %s should be readable : %v", testFilePath, err)
+
+		stat, _ := file.Stat()
+		var b = make([]byte, stat.Size())
+		file.Read(b)
+		Expect(string(b)).To(Equal(rec.Body.String()), "expect return correct file content")
+
+	},
+		Entry("When require index.html file", "/index.html", 200, "text/html"),
+		Entry("When require style.css file", "/css/style.css", 200, "text/css"),
+		Entry("When require index.js file", "/src/index.js", 200, "text/javascript"),
+		Entry("When require notfound.js file", "/src/notfound.js", 404, "text/html"),
+	)
+
+})
+
+var _ = Describe("Serving Static with prefix and next function", func() {
+	maxAge := 2
+
+	cacheControl := "public, max-age=" + strconv.Itoa(maxAge)
+	v := New(&Config{Banner: false})
+
+	nextFunc := func(w http.ResponseWriter, r *http.Request) bool {
+		return r.URL.Query().Get("ignore") == "true"
+	}
+
+	v.Static("/", &StaticConfig{Root: http.Dir("./.github/testdata/fs"), MaxAge: maxAge, Next: nextFunc, Index: "index.html", Prefix: "sub"})
+
+	DescribeTable("", func(url string, expectStatusCode int, contentType string, expectSkip bool) {
+
+		prefix := "/sub"
+		req := httptest.NewRequest("GET", url, http.NoBody)
+		rec := httptest.NewRecorder()
+		v.ServeHTTP(rec, req)
+
+		if expectSkip {
+			Expect(rec.Result().StatusCode).To(Equal(http.StatusNoContent))
+			Expect(rec.Body.Available()).To(Equal(0))
 			return
 		}
 
-		expectBody := path
-		if expectBody == "" {
-			expectBody = "/"
-		}
-
-		Expect(rec.Body.String()).To(Equal(expectBody), fmt.Sprintf("Expect receive %s as the body for path %s , with method %s but got %s", expectBody, path, method, rec.Body.String()))
-
-		mock.AssertCalled(GinkgoT(), "CallMock", path)
-	}
-}
-
-// check whether handler register for path  match url and handle correctly with param
-func checkResponseWithParam(url, path string, expectParam map[matchKey]string, expectMatch bool) {
-	router := New(&Config{Banner: false})
-
-	h := func(w http.ResponseWriter, r *http.Request) {
-		for k, v := range expectParam {
-			Expect(GetParam(r, string(k))).To(Equal(v), fmt.Sprintf("param with key: %s and value: %s should be include in the context of request with path : %s", k, v, url))
-		}
-
-		fmt.Fprintf(w, "%s with param: %v", r.URL.Path, expectParam)
-	}
-
-	m := setupMock(h, path)
-
-	handler := m.GetHandler()
-
-	for _, method := range avaibleRoute {
-		route := getRoute(router, method)
-		route(path, handler)
-	}
-
-	for _, method := range avaibleRoute {
-		req := httptest.NewRequest(string(method), url, http.NoBody)
-		rec := httptest.NewRecorder()
-
-		router.ServeHTTP(rec, req)
-		if !expectMatch {
-			Expect(rec.Result().StatusCode).To(Equal(404), "should return http error not found for url :%s", url)
-
+		if rec.Result().StatusCode == 404 {
+			Expect(rec.Body.String()).To(Equal("404 Not Found"), "expect default error message")
 			return
 		}
 
-		expectBody := fmt.Sprintf("%s with param: %v", url, expectParam)
-		Expect(rec.Body.String()).To(Equal(expectBody), fmt.Sprintf("Expect receive %s as the body for path %s , with method %s", expectBody, path, method))
+		Expect(rec.Result().StatusCode).To(Equal(expectStatusCode))
+		Expect(rec.Header().Get("Content-Type")).To(Equal(contentType), "expect return correct Content-Type header")
+		Expect(rec.Header().Get("Cache-Control")).To(Equal(cacheControl), "expect return correct Cache-Control header")
 
-		m.AssertCalled(GinkgoT(), "CallMock", path)
-	}
+		testFilePath := "./.github/testdata/fs" + prefix + url
+
+		file, err := os.Open(testFilePath)
+		Expect(err).ToNot(HaveOccurred(), "[Setup] test file content %s should be readable : %v", testFilePath, err)
+
+		stat, _ := file.Stat()
+		var b = make([]byte, stat.Size())
+		file.Read(b)
+		Expect(string(b)).To(Equal(rec.Body.String()), "expect return correct file content")
+
+	},
+		Entry("When require index.html file", "/index.html", 200, "text/html", false),
+		Entry("Expect skip", "/index.html?ignore=true", http.StatusNoContent, "", true),
+		Entry("not found", "/notfound.js", 404, "text/plain", false),
+	)
+
+})
+
+// EDGE CASES
+type errorFS struct{}
+
+func (e errorFS) Open(name string) (http.File, error) {
+	return nil, errors.New("custom error for testing")
 }
+
+var _ = Describe("Edge Cases", func() {
+	var v *vi
+	var rec *httptest.ResponseRecorder
+	BeforeEach(func() {
+		v = New(&Config{Banner: false})
+		rec = httptest.NewRecorder()
+
+	})
+
+	It("Should be panic if root is nill", func() {
+		Ω(func() {
+			v.Static("/", &StaticConfig{Root: nil})
+		}).Should(Panic())
+	})
+
+	It("Should return internal error when request file cannot be open", func() {
+
+		v.Static("/", &StaticConfig{Root: errorFS{}})
+		req := httptest.NewRequest("GET", "/", http.NoBody)
+		v.ServeHTTP(rec, req)
+		Expect(rec.Result().StatusCode).To(Equal(http.StatusInternalServerError))
+		Expect(rec.Body.String()).To(Equal("500 server internal error"))
+	})
+	It("Should return not found when receive method other then GET", func() {
+		v.Static("/", &StaticConfig{Root: http.Dir("./.github/testdata/fs")})
+		req := httptest.NewRequest("DELETE", "/index.html", http.NoBody)
+
+		v.ServeHTTP(rec, req)
+
+		Expect(rec.Result().StatusCode).To(Equal(http.StatusNotFound))
+	})
+
+	It("if file is dir , return index", func() {
+		v.Static("/", &StaticConfig{Root: http.Dir("./.github/testdata/fs/")})
+		req := httptest.NewRequest("GET", "/css", http.NoBody)
+
+		v.ServeHTTP(rec, req)
+
+		Expect(rec.Result().StatusCode).To(Equal(http.StatusOK))
+		Expect(rec.Result().Header.Get("Content-Type")).To(Equal("text/html"))
+	})
+
+	It("if index file couldn't be open", func() {
+		v.Static("/", &StaticConfig{Root: http.Dir("./.github/testdata/fs/"), Index: "notfoundindex.html"})
+		req := httptest.NewRequest("GET", "/css", http.NoBody)
+
+		Ω(func() {
+			v.ServeHTTP(rec, req)
+		}).Should(Panic())
+
+	})
+
+})

@@ -5,14 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/diontr00/vi/internal/color"
+	"github.com/diontr00/vi/internal/utils"
 	"io/fs"
 	"log"
 	"net/http"
+	ospath "path"
 	"strconv"
 	"strings"
-
-	"github.com/diontr00/vi/internal/color"
-	"github.com/diontr00/vi/internal/utils"
 )
 
 // type of the context key
@@ -21,6 +21,7 @@ type ctxKey struct{}
 // use to set the key of a context
 var contextKey = ctxKey{}
 
+// Configuration for vi instance
 type Config struct {
 	// When set to false , this will turn off the banner
 	Banner bool
@@ -141,8 +142,8 @@ func (v *vi) Add(method, path string, handler http.HandlerFunc) {
 
 // Static will create a file server serving the static file
 // if path present the path pattern
-func (v *vi) Static(path string, config ...StaticConfig) {
-	var cfg = StaticConfig{
+func (v *vi) Static(path string, config *StaticConfig) {
+	var cfg = &StaticConfig{
 		Index:        "/index.html",
 		MaxAge:       0,
 		Next:         nil,
@@ -151,16 +152,15 @@ func (v *vi) Static(path string, config ...StaticConfig) {
 		Prefix:       "",
 	}
 
-	if len(config) > 0 {
-		cfg = config[0]
-		if config[0].Index == "" {
+	if config != nil {
+		cfg = config
+		if config.Index == "" {
 			cfg.Index = "index.html"
 		}
-
 		if !strings.HasPrefix(cfg.Index, "/") {
 			cfg.Index = "/" + cfg.Index
 		}
-		if !strings.HasPrefix(cfg.NotFoundFile, "/") {
+		if cfg.NotFoundFile != "" && !strings.HasPrefix(cfg.NotFoundFile, "/") {
 			cfg.NotFoundFile = "/" + cfg.NotFoundFile
 		}
 	}
@@ -176,40 +176,54 @@ func (v *vi) Static(path string, config ...StaticConfig) {
 
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		if cfg.Next != nil && cfg.Next(w, r) {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte("Invalid method"))
-			return
-		}
-		var searchp string = r.URL.Path
+
+		var searchp string = ospath.Clean(r.URL.Path)
+
 		if cfg.Prefix != "" {
-			searchp += cfg.Prefix
+			searchp = cfg.Prefix + searchp
 		}
 		if len(searchp) > 1 {
 			searchp = strings.TrimSuffix(searchp, "/")
 		}
 
 		file, err := cfg.Root.Open(searchp)
-		defer file.Close()
-		if err != nil && errors.Is(err, fs.ErrNotExist) {
-			if cfg.NotFoundFile == "" {
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
 				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte("404 Not Found"))
-				return
-			}
+				if cfg.MaxAge > 0 {
+					w.Header().Set("Cache-Control", cacheControl)
+				}
+				if cfg.NotFoundFile == "" {
+					w.Header().Set("Content-Type", "text/plain")
+					w.Write([]byte("404 Not Found"))
+					return
+				}
 
-			nffile, err := cfg.Root.Open(cfg.NotFoundFile)
-			defer nffile.Close()
-			if err != nil {
-				w.WriteHeader(http.StatusNotFound)
-				w.Write([]byte("404 Not Found"))
-				log.Printf("[Warning] , not found file couldn't be open : %v \n", err)
+				nffile, err := cfg.Root.Open(cfg.NotFoundFile)
+				if err != nil {
+					w.Header().Set("Content-Type", "text/plain")
+					w.Write([]byte("404 Not Found"))
+					log.Printf("[Warning] , not found file couldn't be open : %v \n", err)
+					return
+				}
+
+				defer nffile.Close()
+				w.Header().Add("Content-Type", utils.GetMIME(utils.GetFileExtension(cfg.NotFoundFile)))
+				bufio.NewReader(nffile).WriteTo(w)
+				return
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Header().Set("Content-Type", "text/plain")
+				w.Write([]byte("500 server internal error"))
+				log.Printf("[Error] , could not open file for reading : %v \n", err)
 				return
 			}
-			file = nffile
 		}
+
+		defer file.Close()
 		stat, err := file.Stat()
 
 		if err != nil {
@@ -223,12 +237,12 @@ func (v *vi) Static(path string, config ...StaticConfig) {
 			index, err := cfg.Root.Open(cfg.Index)
 			defer index.Close()
 			if err != nil {
-				log.Panicf("Indix file couldn't be open : %v", err)
+				log.Panicf("Index file couldn't be open : %v", err)
 			}
 
 			indStat, err := index.Stat()
 			if err != nil {
-				log.Panicf("Indix file couldn't be open : %v", err)
+				log.Panicf("Index file couldn't be open : %v", err)
 			}
 			file = index
 			stat = indStat
@@ -236,20 +250,12 @@ func (v *vi) Static(path string, config ...StaticConfig) {
 
 		mimeType := utils.GetFileExtension(stat.Name())
 		w.Header().Set("Content-Type", utils.GetMIME(mimeType))
-		if r.Method == http.MethodGet {
-			if cfg.MaxAge > 0 {
-				w.Header().Set("cache-control", cacheControl)
-				bufio.NewReader(file).WriteTo(w)
-				if err != nil {
-					log.Printf("Couldn't serving static file : %v", err)
-					w.WriteHeader(http.StatusInternalServerError)
-					w.Write([]byte("internal server error"))
-					return
-				}
-			}
+		if cfg.MaxAge > 0 {
+			w.Header().Set("Cache-Control", cacheControl)
 		}
-	}
 
+		bufio.NewReader(file).WriteTo(w)
+	}
 	v.Add(http.MethodGet, path, handler)
 }
 
@@ -313,6 +319,9 @@ func GetParam(r *http.Request, key string) (paramValue string) {
 
 func (v *vi) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rqUrl := r.URL.Path
+	if _, ok := v.trees[r.Method]; !ok {
+		v.trees[r.Method] = newTree()
+	}
 	nodes := v.trees[r.Method].find(rqUrl)
 	for i := range nodes {
 		handler := nodes[i].handler
