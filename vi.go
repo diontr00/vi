@@ -140,6 +140,86 @@ func (v *vi) Add(method, path string, handler http.HandlerFunc) {
 	tree.add(path, handler, v.prefixes)
 }
 
+func (v *vi) registerStatic(path string, cfg *StaticConfig) {
+	cacheControl := "public, max-age=" + strconv.Itoa(cfg.MaxAge)
+
+	handler := func(w http.ResponseWriter, r *http.Request) {
+		if cfg.Next != nil && cfg.Next(w, r) {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		// path to search for static files
+		var searchp string = ospath.Clean(r.URL.Path)
+
+		if cfg.Prefix != "" {
+			searchp = cfg.Prefix + searchp
+		}
+		if len(searchp) > 1 {
+			searchp = strings.TrimSuffix(searchp, "/")
+		}
+
+		if cfg.MaxAge > 0 {
+			w.Header().Set("Cache-Control", cacheControl)
+		}
+
+		file, err := cfg.Root.Open(searchp)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				w.WriteHeader(http.StatusNotFound)
+				w.Header().Set("Content-Type", "text/plain")
+				if cfg.NotFoundFile == "" {
+					w.Write([]byte("404 Not Found"))
+					return
+				}
+
+				nffile, err := cfg.Root.Open(cfg.NotFoundFile)
+				if err != nil {
+					w.Write([]byte("404 Not Found"))
+					log.Print(color.Red("[Warning] , not found file couldn't be open : %v \n", err))
+
+					return
+				}
+
+				defer nffile.Close()
+				w.Header().Set("Content-Type", utils.GetMIME(utils.GetFileExtension(cfg.NotFoundFile)))
+				bufio.NewReader(nffile).WriteTo(w)
+				return
+			} else {
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Header().Set("Content-Type", "text/plain")
+				w.Write([]byte("500 server internal error"))
+				log.Print(color.Red("[Error] , could not open file %s for reading : %v \n", color.Bold(searchp), err))
+				return
+			}
+		}
+
+		defer file.Close()
+		stat, _ := file.Stat()
+
+		// Serve index if path is directory
+		if stat.IsDir() {
+			index, err := cfg.Root.Open(cfg.Index)
+			if err != nil {
+				log.Panicf(color.Red("Index file couldn't be open : %v \n", err))
+			}
+
+			defer index.Close()
+			file = index
+			searchp = cfg.Index
+		}
+
+		mimeType := utils.GetFileExtension(searchp)
+		w.Header().Set("Content-Type", utils.GetMIME(mimeType))
+		if cfg.MaxAge > 0 {
+			w.Header().Set("Cache-Control", cacheControl)
+		}
+
+		bufio.NewReader(file).WriteTo(w)
+	}
+	v.Add(http.MethodGet, path, handler)
+}
+
 // Static will create a file server serving the static file
 // if path present the path pattern
 func (v *vi) Static(path string, config *StaticConfig) {
@@ -172,91 +252,7 @@ func (v *vi) Static(path string, config *StaticConfig) {
 	if cfg.Prefix != "" && !strings.HasPrefix(cfg.Prefix, "/") {
 		cfg.Prefix = "/" + cfg.Prefix
 	}
-	cacheControl := "public, max-age=" + strconv.Itoa(cfg.MaxAge)
-
-	handler := func(w http.ResponseWriter, r *http.Request) {
-		if cfg.Next != nil && cfg.Next(w, r) {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-
-		var searchp string = ospath.Clean(r.URL.Path)
-
-		if cfg.Prefix != "" {
-			searchp = cfg.Prefix + searchp
-		}
-		if len(searchp) > 1 {
-			searchp = strings.TrimSuffix(searchp, "/")
-		}
-
-		file, err := cfg.Root.Open(searchp)
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				w.WriteHeader(http.StatusNotFound)
-				if cfg.MaxAge > 0 {
-					w.Header().Set("Cache-Control", cacheControl)
-				}
-				if cfg.NotFoundFile == "" {
-					w.Header().Set("Content-Type", "text/plain")
-					w.Write([]byte("404 Not Found"))
-					return
-				}
-
-				nffile, err := cfg.Root.Open(cfg.NotFoundFile)
-				if err != nil {
-					w.Header().Set("Content-Type", "text/plain")
-					w.Write([]byte("404 Not Found"))
-					log.Printf("[Warning] , not found file couldn't be open : %v \n", err)
-					return
-				}
-
-				defer nffile.Close()
-				w.Header().Add("Content-Type", utils.GetMIME(utils.GetFileExtension(cfg.NotFoundFile)))
-				bufio.NewReader(nffile).WriteTo(w)
-				return
-			} else {
-				w.WriteHeader(http.StatusInternalServerError)
-				w.Header().Set("Content-Type", "text/plain")
-				w.Write([]byte("500 server internal error"))
-				log.Printf("[Error] , could not open file for reading : %v \n", err)
-				return
-			}
-		}
-
-		defer file.Close()
-		stat, err := file.Stat()
-
-		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte("Resource Couldn't be process"))
-			log.Printf("Couldn't open static file %s : %v", searchp, err)
-		}
-
-		// Serve index if path is directory
-		if stat.IsDir() {
-			index, err := cfg.Root.Open(cfg.Index)
-			defer index.Close()
-			if err != nil {
-				log.Panicf("Index file couldn't be open : %v", err)
-			}
-
-			indStat, err := index.Stat()
-			if err != nil {
-				log.Panicf("Index file couldn't be open : %v", err)
-			}
-			file = index
-			stat = indStat
-		}
-
-		mimeType := utils.GetFileExtension(stat.Name())
-		w.Header().Set("Content-Type", utils.GetMIME(mimeType))
-		if cfg.MaxAge > 0 {
-			w.Header().Set("Cache-Control", cacheControl)
-		}
-
-		bufio.NewReader(file).WriteTo(w)
-	}
-	v.Add(http.MethodGet, path, handler)
+	v.registerStatic(path, cfg)
 }
 
 // use to group route under prefix
