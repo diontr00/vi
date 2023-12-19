@@ -1,3 +1,9 @@
+## v0.4.1 (2023-12-19)
+
+### Refactor
+
+- ♻️ clean Static method
+
 ## v0.4.0 (2023-12-16)
 
 ### Feat
