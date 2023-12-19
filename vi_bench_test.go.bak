@@ -2,22 +2,14 @@ package vi_test
 
 import (
 	"fmt"
-	"net/http"
-	"net/http/httptest"
-	"time"
-
-	// "time"
-
-	// "net/http/httptest"
-	"runtime"
-	// "testing"
-
 	"github.com/diontr00/vi"
 	"github.com/gorilla/mux"
-
 	. "github.com/onsi/ginkgo/v2"
-	// . "github.com/onsi/gomega"
 	"github.com/onsi/gomega/gmeasure"
+	"net/http"
+	"net/http/httptest"
+	"runtime"
+	"time"
 )
 
 var (
@@ -287,7 +279,7 @@ var _ = Describe("Performance Comparison", Ordered, func() {
 		AddReportEntry(experiment.Name, experiment)
 
 		memProfile("Vi", experiment, func() {
-			vmux := vi.New(&vi.Config{})
+			vmux := vi.New(&vi.Config{Banner: false})
 			for _, route := range githubRoute {
 				vmux.Add(route.method, route.path, simpleHandler)
 			}
@@ -312,7 +304,6 @@ var _ = Describe("Performance Comparison", Ordered, func() {
 			timer.Reset()
 			experiment.SampleDuration(comparee.muxName, func(idx int) {
 				for _, route := range githubRoute {
-
 					comparee.mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(route.method, route.path, http.NoBody))
 				}
 			}, gmeasure.SamplingConfig{N: 200, Duration: time.Second * 10, NumParallel: 16})
